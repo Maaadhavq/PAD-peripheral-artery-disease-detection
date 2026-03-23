@@ -1,0 +1,26 @@
+# Data
+*.csv
+*.csv.gz
+*.h5
+*.pkl
+*.joblib
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
