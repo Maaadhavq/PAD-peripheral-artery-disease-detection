@@ -1,9 +1,20 @@
-# Data
+# Data — MIMIC-IV is credentialed, never commit it
+mimic_data/
 *.csv
 *.csv.gz
 *.h5
 *.pkl
 *.joblib
+
+# Trained models, model cards, vector store
+artifacts/
+
+# Fetched guideline documents (not ours to redistribute)
+*.pdf
+copilot/knowledge/_cache/
+
+# Secrets / local config
+.env
 
 # Notebook checkpoints
 .ipynb_checkpoints/
@@ -15,6 +26,10 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.pytest_cache/
+
+# Local scratch
+scratch_*.py
 
 # OS
 .DS_Store
