@@ -110,6 +110,8 @@ For a given patient record it:
 
 That last step is the part that matters. A model will happily write `[7]` when it was handed four passages, and to a reader an unresolvable citation looks exactly like a grounded one. Asking for citations in the prompt is not the same as having them, so the check is enforced in code.
 
+One related trap is worth naming, because it produced clinically false text before it was fixed: a SHAP value says which way a feature moved *the model's score*, not whether it causes disease. Handed "statin therapy — increases", the model wrote that statins increase the risk of PAD. The factors are now phrased as "pushed the score up/down", and the prompt separates score movement from clinical meaning.
+
 If nothing clears the relevance threshold, the copilot says so and the LLM is never called — no improvising.
 
 ### Knowledge base
@@ -154,13 +156,26 @@ python -m copilot.eval.run_eval --with-answers  # also generate and check answer
 
 Scores a 24-question golden set for retrieval `hit@k` and `hit@1`, and checks that every citation in a generated answer resolves to a retrieved passage.
 
+Measured with `nomic-embed-text` embeddings and `llama3.1:8b` generation, k=6:
+
+| Metric | Result |
+|---|---|
+| Retrieval hit@6 | **24/24** (1.00) |
+| Retrieval hit@1 | **19/24** (0.79) |
+| Mean top score | 0.749 |
+| Citations valid | **24/24** — no unresolvable citation survived |
+| Answers citing a source | 22/24 |
+| Empty answers | 0/24 |
+
+Two answers out of 24 still make claims without citing anything. They are flagged as ungrounded in the UI rather than quietly passed off as sourced — an 8B model does not follow a citation instruction perfectly, which is exactly why the check is in code.
+
 There is also an offline stand-in embedder for testing without Ollama:
 
 ```bash
 python -m copilot.ingest --provider hashing
 ```
 
-It is requested by name and never substituted silently — a hashed bag of words retrieves far worse than a real embedding model, and a quiet fallback would make the copilot look like it works when it does not. For reference, it scores `hit@k 0.79 / hit@1 0.54` on the golden set; that is the floor real embeddings should clear.
+It is requested by name and never substituted silently — a hashed bag of words retrieves far worse than a real embedding model, and a quiet fallback would make the copilot look like it works when it does not. The gap is the point: it scores `hit@6 0.79 / hit@1 0.54` against `1.00 / 0.79` for real embeddings.
 
 ---
 
