@@ -29,8 +29,8 @@ from sklearn.utils import resample
 from xgboost import XGBClassifier
 
 from pad.config import FEATURE_COLUMNS, GROUP_COLUMN, RANDOM_SEED, TARGET_COLUMN
+from pad.paths import ARTIFACT_DIR
 
-ARTIFACT_DIR = Path("artifacts")
 MODEL_FILE = "model.joblib"
 CARD_FILE = "model_card.json"
 

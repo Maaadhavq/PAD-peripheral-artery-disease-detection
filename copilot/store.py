@@ -10,7 +10,8 @@ from pathlib import Path
 
 import numpy as np
 
-DEFAULT_INDEX_DIR = Path("artifacts") / "knowledge_index"
+from pad.paths import KNOWLEDGE_INDEX_DIR as DEFAULT_INDEX_DIR
+
 VECTOR_FILE = "vectors.npz"
 CHUNK_FILE = "chunks.json"
 

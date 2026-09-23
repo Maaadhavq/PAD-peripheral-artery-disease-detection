@@ -1,44 +1,76 @@
-# PAD Prediction Model v2.0
+# PAD Prediction Model + Risk Copilot
 
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Maaadhavq/PAD-peripheral-artery-disease-detection/blob/main/pad_model.ipynb)
 
-> 🚧 **Note:** This project is currently undergoing development and is a work in progress.
+> 🚧 **Note:** This project is under active development.
 
-A machine learning pipeline for predicting **Peripheral Artery Disease (PAD)** using clinical data from [MIMIC-IV](https://physionet.org/content/mimiciv/). Built this as a way to explore how well standard ML classifiers can pick up on PAD from routine hospital data — labs, demographics, comorbidities, and medications.
+Two halves of one project:
 
-## What it does
+1. **A machine learning pipeline** that predicts **Peripheral Artery Disease (PAD)** from routine [MIMIC-IV](https://physionet.org/content/mimiciv/) hospital data — labs, demographics, comorbidities and medications.
+2. **A RAG copilot** that turns a prediction into an explanation a reader can actually check: SHAP attributions for *why* the score came out that way, plus a natural-language answer grounded in public clinical references, with citations verified in code.
 
-Takes raw MIMIC-IV tables and builds a binary classifier that predicts whether a patient has PAD. The pipeline handles everything end-to-end:
+Everything runs locally. The language model is a local Ollama model, not an API — MIMIC-derived values must not be sent to a third party under the PhysioNet data use agreement.
 
-- Pulls admissions, diagnoses, lab events, and prescriptions from MIMIC-IV
-- Identifies PAD patients via ICD-9/ICD-10 codes and samples a 1:1 control group matched on age bracket and gender
-- Engineers features from five categories:
+---
+
+## Architecture
+
+```
+MIMIC-IV tables
+      │
+      ▼
+  pad/  ──────────────────────────────────────────────┐
+   cohort.py    matched case-control cohort            │
+   features.py  13 features, leakage-controlled        │
+   train.py     grouped CV → best model → artifacts/   │
+   explain.py   SHAP attributions                      │
+      │                                                │
+      ▼                                                ▼
+  artifacts/model.joblib                        pad_model.ipynb
+      │                                         (the driver)
+      ▼
+  copilot/  ───────────────────────────────────────────┐
+   ingest.py    fetch → chunk → embed → index          │
+   retrieve.py  cosine search over the index           │
+   llm.py       local Ollama client                    │
+   copilot.py   score → SHAP → retrieve → answer       │
+      │              → verify every citation           │
+      ▼                                                │
+   app.py       Streamlit UI ◄────────────────────────┘
+```
+
+---
+
+## Part 1 — the model
+
+### What it does
+
+- Pulls admissions, diagnoses, lab events and prescriptions from MIMIC-IV
+- Identifies PAD patients by ICD-9/ICD-10 code and samples a matched control group
+- Engineers 13 features across four categories:
   - **Demographics** — age at admission, gender
-  - **Lab results** — cholesterol, glucose, creatinine, hemoglobin, platelet count
+  - **Labs** — cholesterol, glucose, creatinine, hemoglobin, platelet count
   - **Comorbidities** — diabetes, hypertension, heart disease, stroke history
-  - **Medications** — statin and antiplatelet usage
-- Trains and compares six models:
-  - Logistic Regression
-  - Random Forest
-  - SVM
-  - MLP (Neural Network)
-  - XGBoost
-  - LightGBM
-- Picks the best one by AUC and shows confusion matrix + ROC curve
+  - **Medications** — statin and antiplatelet use
+- Compares six classifiers — logistic regression, random forest, SVM, MLP, XGBoost, LightGBM
+- Picks the winner by cross-validated AUC and evaluates it once on a held-out test set
 
-## Avoiding leakage
+### Avoiding leakage
 
-Most of the work in this notebook went into making sure the model can't cheat:
+Most of the engineering here went into making sure the model cannot cheat. Each of these is covered by a test that was checked to fail against the earlier behaviour.
 
-- **Patient-level cohort** — controls are drawn from patients with *no* PAD code in any admission, so the same person never appears as both a case and a control
-- **Patient-level split** — `GroupShuffleSplit` on `subject_id`, so a patient with multiple admissions can't land in both train and test
-- **No future information** — comorbidities and medications only count if they were recorded at or before the index admission; labs come from the index admission only
-- **Matched controls** — 1:1 on age bracket × gender, so the model has to learn from clinical features rather than "older male = PAD"
-- **Lab de-duplication** — multiple `itemid`s that map to the same lab label (e.g. point-of-care vs. lab glucose) are averaged rather than silently dropped
+- **Patient-level cohort** — controls come from patients with *no* PAD code in any admission, so the same person never appears as both a case and a control. Each control patient contributes one admission.
+- **Patient-level split** — `GroupShuffleSplit` on `subject_id`, so a patient with several admissions cannot straddle train and test.
+- **Model selection on cross-validation** — the winner is chosen by grouped 5-fold CV on the training set. The test set is scored once, afterwards, so the headline number is not the best of six attempts at the same data.
+- **Preprocessing inside the pipeline** — imputation and scaling are pipeline steps, refit per fold, so they never see validation or test data.
+- **No future information** — comorbidities and medications come from strictly earlier admissions. ICD codes are assigned at discharge, and statins and antiplatelets are the standard PAD treatment, so counting either from the index stay would feed the model a consequence of the diagnosis it is meant to predict. Labs come from the index admission, which is what is measurable at presentation.
+- **Matched controls** — 1:1 on age bracket × gender, so the model has to learn something clinical rather than "older male".
+- **Lab de-duplication** — several `itemid`s map to one lab label (point-of-care vs laboratory glucose); they are averaged, not silently dropped.
+- **Drug names, not substrings** — the statin pattern lists explicit drug names. A bare `statin` pattern also matches **nystatin**, an antifungal.
 
-## Data
+### Data
 
-Uses [MIMIC-IV](https://physionet.org/content/mimiciv/) which requires PhysioNet credentialed access. You'll need these files:
+Requires [MIMIC-IV](https://physionet.org/content/mimiciv/) and PhysioNet credentialed access:
 
 ```
 mimic_data/
@@ -50,51 +82,134 @@ mimic_data/
 └── prescriptions.csv.gz
 ```
 
-## How to run
+### Running it
 
-**On Colab (recommended):**
-
-1. Upload the MIMIC-IV files to `My Drive/mimic_data/` on Google Drive
-2. Open `pad_model.ipynb` in [Google Colab](https://colab.research.google.com/)
-3. Run all cells — it'll mount your Drive, process the data, and train the models
+**Colab:** open the notebook via the badge above, clone the repo in the first cell, and put the MIMIC-IV files in `My Drive/mimic_data/`.
 
 **Locally:**
-
-1. Put the MIMIC-IV files in a `mimic_data/` folder next to the notebook
-2. `pip install -r requirements.txt`
-3. Run the notebook — it detects it's not on Colab and reads from `./mimic_data/` instead
-
-Either way, the processed dataset gets saved as `pad_model_dataset.csv` so you can skip the heavy preprocessing next time.
-
-## Dependencies
-
-Everything is preinstalled on Colab. For a local run:
 
 ```bash
 pip install -r requirements.txt
 ```
 
+Put the files in `mimic_data/` next to the notebook and run it — it detects it is not on Colab and reads from there. It writes `artifacts/model.joblib` and `artifacts/model_card.json`, which the copilot loads.
+
+---
+
+## Part 2 — the copilot
+
+A prediction on its own is not much use to a reader who cannot check it. The copilot answers "why this score?" with attribution and sources.
+
+For a given patient record it:
+
+1. scores the record with the trained pipeline,
+2. computes SHAP attributions for the top contributing features,
+3. builds a retrieval query from those factors and searches the knowledge index,
+4. asks a local LLM to explain the score **citing the retrieved passages**,
+5. **verifies every citation** — any `[n]` that does not resolve to a retrieved passage is stripped and flagged.
+
+That last step is the part that matters. A model will happily write `[7]` when it was handed four passages, and to a reader an unresolvable citation looks exactly like a grounded one. Asking for citations in the prompt is not the same as having them, so the check is enforced in code.
+
+If nothing clears the relevance threshold, the copilot says so and the LLM is never called — no improvising.
+
+### Knowledge base
+
+| Source | Provenance |
+|---|---|
+| NHLBI — PAD overview, causes, symptoms, diagnosis, treatment | NIH, public domain, fetched at ingest |
+| CDC — About Peripheral Arterial Disease | CDC, public domain, fetched at ingest |
+| Model card | Written for this project |
+| Feature dictionary | Written for this project |
+
+External pages are fetched at ingest rather than committed, so the repo does not redistribute someone else's text and the index tracks the live pages.
+
+### Setup
+
+```bash
+pip install -r requirements-app.txt
+```
+
+Install [Ollama](https://ollama.com/download), then pull the two models:
+
+```bash
+ollama pull llama3.1:8b
+ollama pull nomic-embed-text
+```
+
+Build the index and start the app:
+
+```bash
+python -m copilot.ingest
+streamlit run app.py
+```
+
+Both models fit together on an 8 GB GPU. Override with `PAD_LLM_MODEL`, `PAD_EMBED_MODEL` and `OLLAMA_HOST` if you want something else.
+
+### Evaluation
+
+```bash
+python -m copilot.eval.run_eval                 # retrieval only
+python -m copilot.eval.run_eval --with-answers  # also generate and check answers
+```
+
+Scores a 24-question golden set for retrieval `hit@k` and `hit@1`, and checks that every citation in a generated answer resolves to a retrieved passage.
+
+There is also an offline stand-in embedder for testing without Ollama:
+
+```bash
+python -m copilot.ingest --provider hashing
+```
+
+It is requested by name and never substituted silently — a hashed bag of words retrieves far worse than a real embedding model, and a quiet fallback would make the copilot look like it works when it does not. For reference, it scores `hit@k 0.79 / hit@1 0.54` on the golden set; that is the floor real embeddings should clear.
+
+---
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+54 tests, run against a synthetic MIMIC-shaped fixture, so no credentialed data is needed. The fixture deliberately reproduces the structures that caused bugs: patients with several admissions, PAD codes only on the final admission, `itemid`s sharing a lab label, and nystatin prescriptions.
+
+---
+
 ## Project structure
 
 ```
-├── pad_model.ipynb      # main notebook — data processing + model training
-├── requirements.txt
-└── README.md
+├── pad/                  # pipeline: cohort, features, training, SHAP
+├── copilot/              # RAG: ingest, retrieve, LLM, grounding
+│   ├── knowledge/        # project-written docs (model card, feature dictionary)
+│   └── eval/             # golden set + eval harness
+├── tests/                # synthetic fixture + 54 tests
+├── pad_model.ipynb       # the training driver
+├── app.py                # Streamlit copilot UI
+└── requirements*.txt
 ```
 
-## Notes
+---
 
-- The lab events and prescriptions files are large, so the notebook processes them in chunks to avoid memory issues
-- Class imbalance is handled through balanced class weights, `scale_pos_weight` for XGBoost, and minority oversampling for the MLP (which has no class-weight option)
-- Control sampling and the train/test split are both seeded, so runs are reproducible
-- Missing lab values are mean-imputed (fit on the training set only)
+## Limitations
+
+Worth being blunt about, since the numbers look good:
+
+- **The label is a billing code, not a diagnosis.** Undercoded PAD patients sit in the control pool; miscoded ones inflate the case group.
+- **ICU population.** MIMIC-IV patients are sicker than a general population, so these probabilities are not population risk.
+- **No ankle-brachial index, no smoking status, no imaging** — smoking is among the strongest PAD risk factors and is not reliably available in these tables.
+- **Matched controls change the base rate**, so the output is a discrimination score, not a calibrated probability.
+- **Uncalibrated.** No Platt scaling or isotonic regression yet.
+
+`copilot/knowledge/model_card.md` covers this in full, and it is in the copilot's knowledge base, so the assistant can answer questions about its own limits.
 
 ## What's next
 
-- Cross-validation instead of a single split for a more reliable AUC estimate
-- SHAP values to see which clinical signals drive predictions
-- Probability calibration (Platt / isotonic) before any clinical use
+- Probability calibration (Platt / isotonic)
+- Reranking retrieved passages before generation
+- Note-derived features from MIMIC-IV-Note (smoking status, claudication mentions)
 
 ## License
 
-This project uses MIMIC-IV data which is subject to the [PhysioNet Credentialed Health Data Use Agreement](https://physionet.org/content/mimiciv/). Make sure you have proper access before using the data.
+Code is MIT — see [LICENSE](LICENSE). The MIMIC-IV data it processes is governed by the [PhysioNet Credentialed Health Data Use Agreement](https://physionet.org/content/mimiciv/); make sure you have access before using it.
+
+**This is a research project, not a medical device.** It has not been validated prospectively or externally and must not be used for clinical decisions.
