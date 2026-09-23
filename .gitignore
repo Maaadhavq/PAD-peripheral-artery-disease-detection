@@ -39,3 +39,6 @@ desktop.ini
 # IDE
 .vscode/
 .idea/
+
+# Synthetic smoke-test data (not MIMIC-IV)
+mimic_data_SYNTHETIC_demo/
