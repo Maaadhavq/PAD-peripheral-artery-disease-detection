@@ -1,0 +1,24 @@
+{"question": "What test is used first to diagnose peripheral artery disease?", "expect_sources": ["nhlbi_diagnosis"], "note": "ABI is the first-line test"}
+{"question": "What ankle-brachial index value suggests peripheral artery disease?", "expect_sources": ["nhlbi_diagnosis"], "note": "ABI below 0.90"}
+{"question": "What causes peripheral artery disease?", "expect_sources": ["nhlbi_causes", "cdc_pad", "nhlbi_overview"], "note": "atherosclerosis"}
+{"question": "Which risk factors raise the chance of developing PAD?", "expect_sources": ["nhlbi_causes", "cdc_pad"], "note": "smoking, diabetes, hypertension, age"}
+{"question": "How does smoking affect peripheral artery disease?", "expect_sources": ["nhlbi_causes", "nhlbi_treatment", "cdc_pad"], "note": "main risk factor"}
+{"question": "What are the symptoms of peripheral artery disease in the legs?", "expect_sources": ["nhlbi_symptoms", "cdc_pad", "nhlbi_overview"], "note": "claudication"}
+{"question": "Can someone have PAD without any leg pain?", "expect_sources": ["cdc_pad", "nhlbi_symptoms", "nhlbi_overview"], "note": "many are asymptomatic"}
+{"question": "How is peripheral artery disease treated?", "expect_sources": ["nhlbi_treatment"], "note": "lifestyle, exercise, medicine, procedures"}
+{"question": "What lifestyle changes are recommended for PAD patients?", "expect_sources": ["nhlbi_treatment"], "note": "quit smoking, diet"}
+{"question": "How many people in the United States have peripheral artery disease?", "expect_sources": ["nhlbi_overview", "cdc_pad"], "note": "millions over age 40"}
+{"question": "Does PAD raise the risk of heart attack or stroke?", "expect_sources": ["nhlbi_overview", "cdc_pad"], "note": "shared atherosclerotic process"}
+{"question": "What physical signs in the leg point to PAD?", "expect_sources": ["cdc_pad", "nhlbi_diagnosis", "nhlbi_symptoms"], "note": "weak pulses, hair loss, shiny skin"}
+{"question": "Which conditions can be mistaken for peripheral artery disease?", "expect_sources": ["nhlbi_diagnosis", "cdc_pad"], "note": "nerve compression, arthritis"}
+{"question": "What are the known limitations of this PAD risk model?", "expect_sources": ["model_card"], "note": "ICD labels, ICU cohort, no ABI"}
+{"question": "Is this model safe to use for clinical diagnosis?", "expect_sources": ["model_card"], "note": "explicitly not a diagnostic device"}
+{"question": "How were the control patients chosen for the cohort?", "expect_sources": ["model_card"], "note": "matched, no PAD code in any admission"}
+{"question": "How does the pipeline prevent data leakage between train and test?", "expect_sources": ["model_card", "feature_dictionary"], "note": "patient-level split, CV selection"}
+{"question": "Which MIMIC-IV tables does the model use?", "expect_sources": ["model_card"], "note": "admissions, patients, diagnoses, labevents, prescriptions"}
+{"question": "Why is creatinine included as a feature in the model?", "expect_sources": ["feature_dictionary"], "note": "renal function, shared vascular risk"}
+{"question": "Why might being on a statin not lower the predicted risk?", "expect_sources": ["feature_dictionary", "model_card"], "note": "treatment marks recognised risk"}
+{"question": "How is a patient's age calculated in this dataset?", "expect_sources": ["feature_dictionary"], "note": "anchor_age plus year offset"}
+{"question": "Which drugs count as antiplatelet therapy in the model?", "expect_sources": ["feature_dictionary"], "note": "aspirin, clopidogrel, ticagrelor"}
+{"question": "Why are comorbidities taken only from earlier admissions?", "expect_sources": ["feature_dictionary", "model_card"], "note": "ICD codes assigned at discharge"}
+{"question": "What does the platelet count feature represent clinically?", "expect_sources": ["feature_dictionary"], "note": "thrombus formation on plaque"}

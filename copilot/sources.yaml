@@ -1,0 +1,35 @@
+# Public-domain clinical references fetched at ingest time.
+#
+# These are US government publications (NIH/NHLBI, CDC), so they are in the
+# public domain. They are fetched rather than committed so the knowledge base
+# tracks the live pages and this repo does not redistribute someone else's text.
+sources:
+  - id: nhlbi_overview
+    title: "NHLBI — Peripheral Artery Disease: What Is PAD?"
+    url: https://www.nhlbi.nih.gov/health/peripheral-artery-disease
+    publisher: "National Heart, Lung, and Blood Institute (NIH)"
+
+  - id: nhlbi_causes
+    title: "NHLBI — PAD: Causes and Risk Factors"
+    url: https://www.nhlbi.nih.gov/health/peripheral-artery-disease/causes
+    publisher: "National Heart, Lung, and Blood Institute (NIH)"
+
+  - id: nhlbi_symptoms
+    title: "NHLBI — PAD: Symptoms"
+    url: https://www.nhlbi.nih.gov/health/peripheral-artery-disease/symptoms
+    publisher: "National Heart, Lung, and Blood Institute (NIH)"
+
+  - id: nhlbi_diagnosis
+    title: "NHLBI — PAD: Diagnosis"
+    url: https://www.nhlbi.nih.gov/health/peripheral-artery-disease/diagnosis
+    publisher: "National Heart, Lung, and Blood Institute (NIH)"
+
+  - id: nhlbi_treatment
+    title: "NHLBI — PAD: Treatment"
+    url: https://www.nhlbi.nih.gov/health/peripheral-artery-disease/treatment
+    publisher: "National Heart, Lung, and Blood Institute (NIH)"
+
+  - id: cdc_pad
+    title: "CDC — About Peripheral Arterial Disease (PAD)"
+    url: https://www.cdc.gov/heart-disease/about/peripheral-arterial-disease.html
+    publisher: "Centers for Disease Control and Prevention"

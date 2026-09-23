@@ -143,3 +143,29 @@ def nystatin_patient(tables):
         for h in prescriptions[prescriptions["subject_id"] == subject_id]["hadm_id"].unique()
     ])
     return subject_id, pd.concat([cleaned, trap], ignore_index=True)
+
+
+@pytest.fixture(scope="session")
+def built_cohort(tables):
+    """The matched case-control cohort with demographics attached."""
+    from pad import cohort as cohort_mod
+
+    cohort = cohort_mod.build_cohort(
+        tables["admissions"], tables["patients"], tables["diagnoses_icd"]
+    )
+    return cohort_mod.add_demographics(cohort, tables["admissions"], tables["patients"])
+
+
+@pytest.fixture(scope="session")
+def dataset(built_cohort, tables, mimic_path):
+    """A fully engineered, model-ready dataset built from the synthetic tables."""
+    from pad import cohort as cohort_mod
+    from pad import features as features_mod
+
+    subject_admissions = cohort_mod.subject_admission_times(
+        tables["admissions"], built_cohort["subject_id"].unique()
+    )
+    df = features_mod.add_labs(built_cohort, mimic_path, tables["d_labitems"])
+    df = features_mod.add_comorbidities(df, tables["diagnoses_icd"], subject_admissions)
+    df = features_mod.add_medications(df, mimic_path, subject_admissions)
+    return features_mod.finalize(df)

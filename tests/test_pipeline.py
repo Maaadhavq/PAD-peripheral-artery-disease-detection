@@ -11,25 +11,6 @@ from pad import train as train_mod
 from pad.config import FEATURE_COLUMNS, MEDICATION_PATTERNS
 
 
-@pytest.fixture(scope="module")
-def built_cohort(tables):
-    cohort = cohort_mod.build_cohort(
-        tables["admissions"], tables["patients"], tables["diagnoses_icd"]
-    )
-    return cohort_mod.add_demographics(cohort, tables["admissions"], tables["patients"])
-
-
-@pytest.fixture(scope="module")
-def dataset(built_cohort, tables, mimic_path):
-    subject_admissions = cohort_mod.subject_admission_times(
-        tables["admissions"], built_cohort["subject_id"].unique()
-    )
-    df = features_mod.add_labs(built_cohort, mimic_path, tables["d_labitems"])
-    df = features_mod.add_comorbidities(df, tables["diagnoses_icd"], subject_admissions)
-    df = features_mod.add_medications(df, mimic_path, subject_admissions)
-    return features_mod.finalize(df)
-
-
 class TestCohort:
     def test_no_patient_is_both_case_and_control(self, built_cohort):
         labels_per_patient = built_cohort.groupby("subject_id")["had_pad"].nunique()
