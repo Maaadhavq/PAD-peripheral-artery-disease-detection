@@ -177,12 +177,14 @@ The golden set holds 24 in-scope questions naming the sources that should answer
 
 | Retrieval | Baseline | With reranking |
 |---|---|---|
-| hit@6 (in scope) | **1.00** (24/24) | **1.00** |
-| hit@1 (in scope) | 0.79 (19/24) | **0.92** (22/24) |
+| hit@6 (in scope) | 0.96 (23/24) | **1.00** (24/24) |
+| hit@1 (in scope) | 0.63 (15/24) | **0.79** (19/24) |
 | False refusals | **0** | **0** |
 | Out-of-scope refused | 6/8 | 6/8 |
 
-Reranking costs a generation per candidate, so it is opt-in — but it was measured before being kept, and it moves hit@1 by 12 points.
+Reranking costs a generation per candidate, so it is opt-in — but it was measured before being kept, and it recovers everything cleaning the index cost.
+
+**Those baseline numbers used to be higher, and the drop was an improvement.** Four of sixty-six chunks were pure navigation — the breadcrumb and section menus that sit above the first heading on every NHLBI page, which were being indexed as that page's "Overview" and cited as though they were content. Stripping them moved hit@6 from 1.00 to 0.96 and hit@1 from 0.79 to 0.63, because those menus carried the page's section names ("Treatment", "Diagnosis"), so they matched topic queries and scored as hits for the right *source document* while saying nothing at all. The metric was partly measuring junk. A lower honest number beats a higher one built on citing a menu.
 
 Generated answers, same settings:
 
@@ -211,9 +213,17 @@ An offline stand-in embedder exists for testing without Ollama:
 python -m copilot.ingest --provider hashing
 ```
 
-It is requested by name and never substituted silently — a hashed bag of words retrieves far worse than a real embedding model, and a quiet fallback would make the copilot look like it works when it does not. The gap is the point: `hit@6 0.79 / hit@1 0.54` against `1.00 / 0.79`.
+It is requested by name and never substituted silently — a hashed bag of words retrieves far worse than a real embedding model, and a quiet fallback would make the copilot look like it works when it does not.
 
 ---
+
+## The interface
+
+The app is built as an instrument panel rather than a dashboard. PAD is diagnosed by reading a ratio — the ankle-brachial index — against a marked scale, so the page is organised around a calibrated readout: the score, the band boundaries, and the cohort distribution it is being compared against, all on one axis.
+
+That last element is doing honest work. The cohort is matched 1:1 by construction, so a probability from this model only means something relative to the distribution it came from. Drawing that distribution under the score puts the caveat in front of the reader instead of in a footnote.
+
+Everything else is kept quiet: one arterial red for every positive signal, a desaturated slate for its opposite, lab values in mono because that is how a chart renders them, and explanations set in a serif because clinical prose reads better that way. The theme is fixed rather than following the OS — an instrument has one appearance.
 
 ## Tests
 
