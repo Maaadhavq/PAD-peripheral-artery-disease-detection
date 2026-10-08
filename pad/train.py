@@ -1,9 +1,5 @@
 """Model training: patient-level splits, grouped CV, artifact persistence."""
 
-# lightgbm is imported first on purpose: importing it after scikit-learn
-# crashes it on Windows (the two ship clashing OpenMP runtimes).
-import lightgbm as lgb  # noqa: F401,E402  (must load before sklearn)
-
 import json
 from datetime import date
 from pathlib import Path
@@ -26,6 +22,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.utils import resample
+import lightgbm as lgb
 from xgboost import XGBClassifier
 
 from pad.config import FEATURE_COLUMNS, GROUP_COLUMN, RANDOM_SEED, TARGET_COLUMN
@@ -171,17 +168,41 @@ def roc_points(pipeline, X_test, y_test):
     return fpr, tpr
 
 
+BACKGROUND_ROWS = 100
+
+
 def save_artifacts(pipeline, model_name, cv_results, test_metrics, cohort_stats,
-                   artifact_dir=ARTIFACT_DIR, feature_columns=FEATURE_COLUMNS):
+                   artifact_dir=ARTIFACT_DIR, feature_columns=FEATURE_COLUMNS,
+                   background=None, score_distribution=None):
     """Persist the fitted pipeline and a model card describing how it was built.
 
     The copilot loads these instead of re-running the notebook.
+
+    ``background`` is a sample of training rows kept as the reference
+    distribution for SHAP. Without it the explainer falls back to a zero vector,
+    which only happens to be the training mean because a StandardScaler sits in
+    front of it - an accident that would break silently if preprocessing changed.
+
+    ``score_distribution`` is the model's scores on held-out data, so the app can
+    place a new record as a percentile rather than showing a bare probability.
     """
     artifact_dir = Path(artifact_dir)
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
+    if background is not None:
+        background = background.head(BACKGROUND_ROWS)
+
     joblib.dump(
-        {"pipeline": pipeline, "model_name": model_name, "features": list(feature_columns)},
+        {
+            "pipeline": pipeline,
+            "model_name": model_name,
+            "features": list(feature_columns),
+            "background": background,
+            "score_distribution": (
+                None if score_distribution is None
+                else np.asarray(score_distribution, dtype=float)
+            ),
+        },
         artifact_dir / MODEL_FILE,
     )
 

@@ -41,6 +41,26 @@ def predict_risk(bundle, features):
     return float(bundle["pipeline"].predict_proba(X)[0, 1])
 
 
+def unwrap_pipeline(estimator):
+    """Get at the underlying Pipeline inside a probability calibrator.
+
+    CalibratedClassifierCV wraps the fitted pipeline and is not subscriptable,
+    so SHAP cannot reach the preprocessing steps through it. Calibration is a
+    monotone remap of the score, so explaining the base model is the right
+    thing: it leaves the ranking of features untouched and avoids attributing
+    the calibration curve's shape to the patient's features.
+    """
+    inner = getattr(estimator, "calibrated_classifiers_", None)
+    if inner:
+        base = getattr(inner[0], "estimator", None)
+        if base is not None:
+            return base
+    base = getattr(estimator, "estimator", None)
+    if base is not None:
+        return base
+    return estimator
+
+
 def _is_tree_model(model):
     """True for the tree ensembles TreeExplainer handles directly."""
     return any(
@@ -68,6 +88,7 @@ def _shap_values(pipeline, X_row, background):
     """
     import shap
 
+    pipeline = unwrap_pipeline(pipeline)
     pre = pipeline[:-1]
     model = pipeline[-1]
     X_transformed = pre.transform(X_row)

@@ -24,6 +24,15 @@ HASH_DIMENSIONS = 512
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
+class EmbeddingUnavailable(RuntimeError):
+    """Raised when the embedding backend cannot be reached or lacks the model.
+
+    Retrieval runs against the same Ollama server as generation, so it fails the
+    same way. Callers that already degrade gracefully on OllamaUnavailable need
+    an equivalent here, rather than a raw requests exception escaping.
+    """
+
+
 class OllamaEmbedder:
     """Embeddings from a local Ollama server."""
 
@@ -32,6 +41,13 @@ class OllamaEmbedder:
     def __init__(self, model=EMBED_MODEL, host=OLLAMA_HOST):
         self.model = model
         self.host = host.rstrip("/")
+
+    def _unreachable(self, cause=None):
+        return EmbeddingUnavailable(
+            f"Could not reach Ollama at {self.host} to embed the query. Is it running?\n"
+            "  Install:  https://ollama.com/download\n"
+            f"  Pull:     ollama pull {self.model}"
+        )
 
     def is_available(self):
         try:
@@ -43,13 +59,28 @@ class OllamaEmbedder:
     def embed(self, texts):
         vectors = []
         for text in texts:
-            response = requests.post(
-                f"{self.host}/api/embeddings",
-                json={"model": self.model, "prompt": text},
-                timeout=TIMEOUT,
-            )
-            response.raise_for_status()
-            vectors.append(response.json()["embedding"])
+            try:
+                response = requests.post(
+                    f"{self.host}/api/embeddings",
+                    json={"model": self.model, "prompt": text},
+                    timeout=TIMEOUT,
+                )
+            except requests.RequestException as error:
+                raise self._unreachable() from error
+
+            if response.status_code == 404:
+                raise EmbeddingUnavailable(
+                    f"Ollama has no embedding model named {self.model!r}. Pull it with:\n"
+                    f"    ollama pull {self.model}"
+                )
+            try:
+                response.raise_for_status()
+                vectors.append(response.json()["embedding"])
+            except (requests.RequestException, KeyError, ValueError) as error:
+                raise EmbeddingUnavailable(
+                    f"Ollama returned an unusable embedding response: {error}"
+                ) from error
+
         return _normalize(np.asarray(vectors, dtype=np.float32))
 
 

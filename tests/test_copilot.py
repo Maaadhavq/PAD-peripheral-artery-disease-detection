@@ -11,6 +11,7 @@ from copilot.llm import EchoClient, OllamaUnavailable
 from copilot.retrieve import build_query, citation_list, format_chunks
 from copilot.store import VectorStore
 from pad.config import FEATURE_COLUMNS
+from tests.helpers import StubRetriever
 
 DOCUMENT = {
     "id": "demo",
@@ -183,44 +184,6 @@ class TestRetrieveHelpers:
         chunks = [{"source_title": "A", "section": "S", "url": "u",
                    "publisher": "p", "score": 0.5}]
         assert citation_list(chunks)[0]["n"] == 1
-
-
-class StubRetriever:
-    """Returns a fixed passage list, so copilot tests need no index."""
-
-    def __init__(self, chunks=None):
-        self.chunks = chunks if chunks is not None else [{
-            "source_id": "model_card", "source_title": "Model card", "section": "Limits",
-            "text": "This is a research model and not a diagnostic device.",
-            "url": "knowledge/model_card.md", "publisher": "This project", "score": 0.8,
-        }]
-        self.queries = []
-
-    def retrieve(self, query, k=6, **kwargs):
-        self.queries.append(query)
-        return self.chunks[:k]
-
-
-@pytest.fixture
-def trained_bundle(dataset):
-    from pad import train as train_mod
-
-    X, y, groups = train_mod.split_xy(dataset)
-    X_train, _, y_train, _, _ = train_mod.patient_split(X, y, groups)
-    model = train_mod.build_models()["Logistic Regression"]
-    pipeline = train_mod.fit_pipeline(train_mod.make_pipeline(model), X_train, y_train)
-    return {"pipeline": pipeline, "model_name": "Logistic Regression",
-            "features": FEATURE_COLUMNS}
-
-
-@pytest.fixture
-def patient():
-    return {
-        "gender": 1, "age_at_admission": 72, "cholesterol": 215.0, "glucose": 148.0,
-        "creatinine": 1.4, "hemoglobin": 11.8, "platelet_count": 240.0,
-        "has_diabetes": 1, "has_hypertension": 1, "has_heart_disease": 1,
-        "has_stroke_history": 0, "is_on_statin": 1, "is_on_antiplatelet": 1,
-    }
 
 
 class TestCopilot:

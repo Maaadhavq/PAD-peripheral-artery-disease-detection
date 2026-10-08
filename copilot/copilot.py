@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 
 from pad.explain import factors_to_text, predict_risk, to_frame, top_factors
 from pad.train import load_artifacts
+from copilot.embeddings import EmbeddingUnavailable
 from copilot.llm import OllamaClient, OllamaUnavailable
 from copilot.prompts import INSUFFICIENT_EVIDENCE, SYSTEM_PROMPT, build_user_prompt
 from copilot.retrieve import Retriever, build_query, citation_list, format_chunks
@@ -99,13 +100,47 @@ class PadCopilot:
         """Risk probability alone, no retrieval and no LLM."""
         return predict_risk(self.bundle, features)
 
+    def health(self):
+        """Which backends are reachable, and what built the index.
+
+        Scoring works with everything else down, so the app can report each
+        piece separately instead of guessing from the client's type.
+        """
+        def reachable(component):
+            check = getattr(component, "is_available", None)
+            return bool(check()) if callable(check) else True
+
+        return {
+            "llm": reachable(self.llm),
+            "embedder": reachable(getattr(self.retriever, "embedder", None)),
+            "index_embedder": getattr(
+                getattr(self.retriever, "store", None), "embedder_name", ""
+            ),
+            "model_name": self.model_name,
+        }
+
     def explain(self, features, question=None, k=6, background=None, top_k_factors=5):
         """Score, explain and ground - the whole pipeline for one patient."""
         risk = predict_risk(self.bundle, features)
+        if background is None:
+            background = self.bundle.get("background")
         factors = top_factors(self.bundle, features, k=top_k_factors, background=background)
 
         query = build_query(factors, question)
-        passages = self.retriever.retrieve(query, k=k)
+        try:
+            passages = self.retriever.retrieve(query, k=k)
+        except EmbeddingUnavailable as error:
+            # Retrieval uses the same Ollama server as generation and fails the
+            # same way, so it degrades the same way: keep the score, drop the
+            # explanation, say why.
+            return Answer(
+                risk=risk,
+                model_name=self.model_name,
+                factors=factors,
+                text=str(error),
+                grounded=False,
+                warnings=["The embedding backend was unreachable; no passages retrieved."],
+            )
 
         if not passages:
             # Nothing relevant was retrieved, so there is nothing to ground an

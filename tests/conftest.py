@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from pad.config import FEATURE_COLUMNS
+
 N_PATIENTS = 400
 PAD_RATE = 0.2
 SEED = 7
@@ -169,3 +171,25 @@ def dataset(built_cohort, tables, mimic_path):
     df = features_mod.add_comorbidities(df, tables["diagnoses_icd"], subject_admissions)
     df = features_mod.add_medications(df, mimic_path, subject_admissions)
     return features_mod.finalize(df)
+
+
+@pytest.fixture
+def trained_bundle(dataset):
+    from pad import train as train_mod
+
+    X, y, groups = train_mod.split_xy(dataset)
+    X_train, _, y_train, _, _ = train_mod.patient_split(X, y, groups)
+    model = train_mod.build_models()["Logistic Regression"]
+    pipeline = train_mod.fit_pipeline(train_mod.make_pipeline(model), X_train, y_train)
+    return {"pipeline": pipeline, "model_name": "Logistic Regression",
+            "features": FEATURE_COLUMNS}
+
+
+@pytest.fixture
+def patient():
+    return {
+        "gender": 1, "age_at_admission": 72, "cholesterol": 215.0, "glucose": 148.0,
+        "creatinine": 1.4, "hemoglobin": 11.8, "platelet_count": 240.0,
+        "has_diabetes": 1, "has_hypertension": 1, "has_heart_disease": 1,
+        "has_stroke_history": 0, "is_on_statin": 1, "is_on_antiplatelet": 1,
+    }
