@@ -391,14 +391,15 @@ def main():
             st.info("Press **Explain this record** for a grounded explanation.")
         else:
             tabs = st.tabs(["Explanation", "Factors", "Sources", "Model card"])
+            stale_note = (
+                "The record has changed since this explanation was generated — it "
+                f"describes a score of {answer.risk:.1%}, not the one shown. "
+                "Press **Explain this record** again."
+            )
 
             with tabs[0]:
                 if stale:
-                    st.warning(
-                        "The record has changed since this explanation was "
-                        f"generated — it describes a score of {answer.risk:.1%}, "
-                        "not the one shown. Press **Explain this record** again."
-                    )
+                    st.warning(stale_note)
                 if not answer.grounded:
                     st.warning("This answer is not grounded in retrieved references.")
                 if not st.session_state.get("verified", True):
@@ -421,6 +422,8 @@ def main():
                         st.markdown(f"{line} · score {citation['score']}")
 
             with tabs[1]:
+                if stale:
+                    st.warning(stale_note)
                 render_factors(answer.factors)
 
             with tabs[2]:

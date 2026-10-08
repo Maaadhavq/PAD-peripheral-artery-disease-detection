@@ -280,49 +280,20 @@ class PadCopilot:
             )
         return StreamedExplanation(tokens, None, self, risk, factors, passages)
 
-    def explain(self, features, question=None, k=6, background=None, top_k_factors=5):
-        """Score, explain and ground - the whole pipeline for one patient."""
-        risk = predict_risk(self.bundle, features)
-        if background is None:
-            background = self.bundle.get("background")
-        factors = top_factors(self.bundle, features, k=top_k_factors, background=background)
+    def explain(self, features, question=None, k=6, background=None, top_k_factors=5,
+                use_rerank=False):
+        """Score, explain and ground - the whole pipeline for one patient.
 
-        try:
-            passages = retrieve_for(self.retriever, factors, question, k=k)
-        except EmbeddingUnavailable as error:
-            # Retrieval uses the same Ollama server as generation and fails the
-            # same way, so it degrades the same way: keep the score, drop the
-            # explanation, say why.
-            return Answer(
-                risk=risk,
-                model_name=self.model_name,
-                factors=factors,
-                text=str(error),
-                grounded=False,
-                warnings=["The embedding backend was unreachable; no passages retrieved."],
-            )
-
-        if not passages:
-            # Nothing relevant was retrieved, so there is nothing to ground an
-            # answer in. Say so instead of letting the model improvise.
-            return Answer(
-                risk=risk,
-                model_name=self.model_name,
-                factors=factors,
-                text=INSUFFICIENT_EVIDENCE,
-                grounded=False,
-                warnings=["No passage scored above the relevance threshold."],
-            )
-
-        prompt = build_user_prompt(
-            risk=risk,
-            model_name=self.model_name,
-            factors_text=factors_to_text(factors),
-            features_text=features_to_text(features, self.bundle["features"]),
-            passages=format_chunks(passages),
-            task=question,
+        Shares prepare() and finish() with stream_explain, so the streamed and
+        non-streamed paths cannot drift apart in how they retrieve or verify.
+        """
+        risk, factors, passages, failure = self.prepare(
+            features, question, k, background, top_k_factors, use_rerank
         )
+        if failure is not None:
+            return failure
 
+        prompt = self.build_prompt(features, risk, factors, passages, question)
         try:
             raw = self.llm.chat(SYSTEM_PROMPT, prompt)
         except OllamaUnavailable as error:
@@ -337,17 +308,4 @@ class PadCopilot:
                 warnings=["The local LLM was unreachable; no explanation generated."],
             )
 
-        text, warnings = check_citations(raw, len(passages))
-        if not CITATION_RE.search(text):
-            warnings.append("The answer cites no passages, so it may not be grounded.")
-
-        return Answer(
-            risk=risk,
-            model_name=self.model_name,
-            factors=factors,
-            text=text,
-            citations=citation_list(passages),
-            passages=passages,
-            grounded=bool(CITATION_RE.search(text)),
-            warnings=warnings,
-        )
+        return self.finish(raw, risk, factors, passages)
