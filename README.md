@@ -184,6 +184,25 @@ The golden set holds 24 in-scope questions naming the sources that should answer
 
 Reranking costs a generation per candidate, so it is opt-in — but it was measured before being kept, and it moves hit@1 by 12 points.
 
+Generated answers, same settings:
+
+| Answers | Result |
+|---|---|
+| Citations valid | **32/32** — no unresolvable citation survived |
+| Empty answers | **0/32** |
+| Out-of-scope refused | **6/8** |
+| In-scope answers citing a source | 18/24 |
+| Mean citation overlap | 0.42 |
+| Weakly supported cited sentences | 49% |
+
+Three of these deserve honesty rather than a headline.
+
+**"Grounded" varies run to run** — 17, 18 and 22 out of 24 across three runs at temperature 0.2. An 8B model does not follow a citation instruction deterministically, which is precisely why the check lives in code and not only in the prompt.
+
+**Half the cited sentences score weakly on overlap.** That measure is lexical, not semantic, so it over-reports: a sentence can paraphrase its source faithfully and still share few words. It is a screen that says which sentences to go and read, not a verdict. `--judge` runs the semantic version.
+
+**The answer path had to be fixed to refuse at all.** Retrieval refused 6/8 off-topic questions, but `explain()` refused 0/8 — because the question's results were merged with a factor query that describes the patient record and therefore always retrieves something. An off-topic question arrived with a full set of passages and got answered. A question that retrieves nothing now returns nothing. The retrieval eval could not have caught this; only generating the answers did.
+
 **The two off-topic questions that get through are the deliberately adjacent ones** — marathon training and appendicitis symptoms. No threshold separates them: "symptoms of appendicitis" scores 0.656, above several genuine questions, so raising the cutoff would start refusing real ones. The prompt catches both, which is why there are two layers. Embedding similarity alone cannot tell "medical" from "this model's subject", and pretending otherwise would mean overfitting the threshold to the eval set.
 
 An offline stand-in embedder exists for testing without Ollama:
@@ -231,7 +250,8 @@ Worth being blunt about, since the numbers look good:
 - **ICU population.** MIMIC-IV patients are sicker than a general population, so these probabilities are not population risk.
 - **No ankle-brachial index, no smoking status, no imaging** — smoking is among the strongest PAD risk factors and is not reliably available in these tables.
 - **Matched controls change the base rate.** Even calibrated, this is a discrimination score on a constructed cohort, not a prevalence.
-- **The copilot runs an 8B model.** It does not follow a citation instruction perfectly, and adjacent-domain questions can slip past retrieval. Both are measured above rather than papered over.
+- **The copilot runs an 8B model.** It does not follow a citation instruction perfectly (17–22 of 24 across runs), and adjacent-domain questions slip past retrieval. Both are measured above rather than papered over.
+- **Faithfulness is screened, not guaranteed.** Citations are checked for resolvability always and for support approximately. Nothing here proves a cited passage entails the claim.
 
 `copilot/knowledge/model_card.md` covers this in full, and it is in the copilot's knowledge base — the assistant can answer questions about its own limits.
 
