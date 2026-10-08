@@ -1,0 +1,12 @@
+# The app is designed as a single instrument panel, so the theme is fixed
+# rather than following the OS. Colours are defined once in app_ui.py and
+# mirrored here for the chrome Streamlit draws before our CSS loads.
+[theme]
+base = "light"
+primaryColor = "#B8372A"
+backgroundColor = "#FBFAF8"
+secondaryBackgroundColor = "#F4F2EE"
+textColor = "#15202B"
+
+[server]
+headless = true

@@ -28,6 +28,29 @@ FEATURE_LABELS = {
 }
 
 
+BINARY_FEATURES = {
+    "gender", "has_diabetes", "has_hypertension", "has_heart_disease",
+    "has_stroke_history", "is_on_statin", "is_on_antiplatelet",
+}
+
+
+def format_value(column, value):
+    """Write one feature value the way a reader would say it.
+
+    Binary flags shown as 0 and 1 get read as quantities: handed
+    "is_on_statin: 0.0" the model wrote that the patient was on a statin
+    "which was 0.0". Words remove the ambiguity, and both the factor list and
+    the full feature dump go through here so they cannot disagree.
+    """
+    if value is None or value != value:
+        return "not measured"
+    if column == "gender":
+        return "male" if value else "female"
+    if column in BINARY_FEATURES:
+        return "yes" if value else "no"
+    return f"{value:g}"
+
+
 def to_frame(features, feature_columns=FEATURE_COLUMNS):
     """Build a one-row DataFrame in the column order the pipeline expects."""
     if isinstance(features, pd.DataFrame):
@@ -155,7 +178,7 @@ def factors_to_text(factors):
     """
     parts = []
     for factor in factors:
-        value = "unknown" if factor["value"] is None else f"{factor['value']:g}"
+        value = format_value(factor["feature"], factor["value"])
         movement = "pushed the score up" if factor["shap"] > 0 else "pushed the score down"
         parts.append(
             f"{factor['label']} = {value} ({movement}, SHAP {factor['shap']:+.3f})"

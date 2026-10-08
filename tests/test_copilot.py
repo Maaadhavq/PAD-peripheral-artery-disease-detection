@@ -79,6 +79,34 @@ class TestHtmlExtraction:
         assert "evil" not in text
         assert "Menu" not in text
 
+    def test_navigation_menus_are_dropped(self):
+        """Breadcrumbs and section menus sit above the first heading, so they
+        became each page's "Overview" chunk and were cited as content. Four of
+        sixty-six chunks were pure navigation."""
+        html = (
+            "<article><ul>"
+            '<li><a href="/">Home</a></li>'
+            '<li><a href="/t">Health Topics</a></li>'
+            '<li><a href="/c">Causes and Risk Factors</a></li>'
+            "</ul><h2>Causes</h2><p>Atherosclerosis is the main cause.</p></article>"
+        )
+        text = html_to_text(html)
+        assert "Health Topics" not in text
+        assert "Atherosclerosis is the main cause." in text
+
+    def test_content_bullets_survive(self):
+        """Clinical bullets are sentences, and some of them contain links."""
+        html = (
+            "<article><ul>"
+            "<li>Quit smoking, because it is the main risk factor for PAD</li>"
+            '<li><a href="/g">Read the full clinical guideline for more detail '
+            'on managing this condition</a></li>'
+            "</ul></article>"
+        )
+        text = html_to_text(html)
+        assert "Quit smoking" in text
+        assert "full clinical guideline" in text
+
     def test_boilerplate_is_dropped(self):
         text = html_to_text("<article><p>MENU</p><p>Actual clinical content.</p></article>")
         assert "MENU" not in text

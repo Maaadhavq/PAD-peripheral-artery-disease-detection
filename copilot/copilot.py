@@ -16,7 +16,13 @@ passage is stripped before the answer is returned.
 import re
 from dataclasses import dataclass, field
 
-from pad.explain import factors_to_text, predict_risk, to_frame, top_factors
+from pad.explain import (
+    factors_to_text,
+    format_value,
+    predict_risk,
+    to_frame,
+    top_factors,
+)
 from pad.train import load_artifacts
 from copilot.embeddings import EmbeddingUnavailable
 from copilot.llm import OllamaClient, OllamaUnavailable
@@ -111,28 +117,6 @@ def check_citations(text, n_passages):
             f"were never retrieved: {unique}."
         )
     return cleaned.strip(), warnings
-
-
-BINARY_FEATURES = {
-    "gender", "has_diabetes", "has_hypertension", "has_heart_disease",
-    "has_stroke_history", "is_on_statin", "is_on_antiplatelet",
-}
-
-
-def format_value(column, value):
-    """Render one feature value unambiguously for the prompt.
-
-    Binary flags used to be shown as 0.0 and 1.0, which the model read as
-    quantities: given "is_on_statin: 0.0" it wrote that the patient was on a
-    statin "which was 0.0". Words remove the ambiguity.
-    """
-    if value is None or value != value:
-        return "not measured"
-    if column == "gender":
-        return "male" if value else "female"
-    if column in BINARY_FEATURES:
-        return "yes" if value else "no"
-    return f"{value:g}"
 
 
 def features_to_text(features, columns):

@@ -19,10 +19,34 @@ TIMEOUT = 30
 
 # Page furniture that carries no clinical content.
 BOILERPLATE = {
-    "MENU", "Email", "Print", "Language switcher", "Español",
+    "MENU", "Email", "Print", "Language switcher", "Español", "English",
     "< Back To Health Topics", "< Back To Peripheral Artery Disease",
-    "PERIPHERAL ARTERY DISEASE", "KEY POINTS",
+    "PERIPHERAL ARTERY DISEASE", "KEY POINTS", "MORE INFORMATION",
+    "Home", "Health Topics", "On This Page", "Related Information",
 }
+
+# A nav entry is a list item that is nothing but a link. Clinical bullets are
+# sentences; menu items are a few words wrapped in an anchor. Without this the
+# breadcrumb and section menus at the top of every NHLBI page became that
+# page's first chunk -- 4 of 66 chunks were pure navigation, and because they
+# sat above the first heading they were indexed as the page's "Overview" and
+# cited as if they were content.
+#
+# Six words: the longest real nav entry on these pages is "What Is Peripheral
+# Artery Disease?" at five. A looser limit starts eating short linked sentences
+# that are genuine content.
+NAV_WORD_LIMIT = 6
+
+
+def _is_navigation_item(element, text):
+    """True when a list item is just a link, not a sentence."""
+    links = element.find_all("a")
+    if not links:
+        return False
+    link_text = " ".join(
+        " ".join(a.get_text(" ", strip=True).split()) for a in links
+    )
+    return link_text.strip() == text.strip() and len(text.split()) <= NAV_WORD_LIMIT
 
 
 def load_sources(sources_file=SOURCES_FILE):
@@ -52,6 +76,8 @@ def html_to_text(html):
             level = int(element.name[1])
             lines.append(f"\n{'#' * level} {text}\n")
         elif element.name == "li":
+            if _is_navigation_item(element, text):
+                continue
             lines.append(f"- {text}")
         else:
             lines.append(text)
