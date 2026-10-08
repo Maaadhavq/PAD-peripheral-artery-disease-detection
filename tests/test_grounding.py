@@ -114,6 +114,30 @@ class TestQueryConstruction:
         retrieve_for(retriever, [{"label": "statin therapy"}], question=None, k=6)
         assert len(retriever.queries) == 1
 
+    def test_an_unanswerable_question_returns_nothing(self):
+        """The factor query is about the record and always retrieves something,
+        so merging it in unconditionally meant an off-topic question was never
+        refused in the explain path - 0/8 on the golden set, even though the
+        question alone was refused 6/8."""
+        class QuestionMisses:
+            def __init__(self):
+                self.queries = []
+
+            def retrieve(self, query, k=6, **kwargs):
+                self.queries.append(query)
+                # The factor query hits; the user's question does not.
+                if query.startswith("peripheral artery disease"):
+                    return [{"id": "f", "text": "t", "score": 0.7}]
+                return []
+
+        retriever = QuestionMisses()
+        assert retrieve_for(retriever, [{"label": "statin therapy"}],
+                            question="who directed Jaws?", k=6) == []
+
+    def test_factor_passages_still_returned_without_a_question(self):
+        retriever = StubRetriever()
+        assert retrieve_for(retriever, [{"label": "statin therapy"}], question=None, k=6)
+
     def test_merged_results_are_deduplicated_and_ranked(self):
         shared = {"id": "dup", "text": "t", "source_id": "s", "source_title": "S",
                   "section": "x", "score": 0.5}

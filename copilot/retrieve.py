@@ -62,12 +62,20 @@ def retrieve_for(retriever, factors, question=None, k=6):
     returned general clinical pages. Running both and merging by score lets a
     pointed question pull in its own evidence while the factor context is still
     represented.
+
+    When a question is asked and *nothing* clears the threshold for it, this
+    returns nothing at all rather than the factor passages. The factor query is
+    about the patient record and always retrieves something, so merging it in
+    unconditionally meant an off-topic question was never refused - measured at
+    0/8 on the golden set even though the question alone was refused 6/8.
     """
     factor_hits = retriever.retrieve(build_query(factors), k=k)
     if not question:
         return factor_hits[:k]
 
     question_hits = retriever.retrieve(question, k=k)
+    if not question_hits:
+        return []
 
     merged = {}
     for chunk in list(question_hits) + list(factor_hits):
