@@ -8,6 +8,7 @@ Talks to the Ollama REST API directly so the project does not depend on the
 Ollama Python SDK.
 """
 
+import json
 import os
 
 import requests
@@ -75,6 +76,47 @@ class OllamaClient:
         response.raise_for_status()
         return response.json()["message"]["content"].strip()
 
+    def stream_chat(self, system, user):
+        """Yield the reply token by token.
+
+        Citation verification can only run on the finished text, so a caller
+        that streams should display this as it arrives and then re-render the
+        verified version. The UI says so rather than hiding the difference.
+        """
+        try:
+            response = requests.post(
+                f"{self.host}/api/chat",
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    "stream": True,
+                    "options": {"temperature": self.temperature},
+                },
+                timeout=TIMEOUT,
+                stream=True,
+            )
+            response.raise_for_status()
+        except requests.RequestException as error:
+            raise OllamaUnavailable(
+                f"Could not reach Ollama at {self.host}. Is it running?"
+            ) from error
+
+        for line in response.iter_lines():
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except ValueError:
+                continue
+            piece = payload.get("message", {}).get("content", "")
+            if piece:
+                yield piece
+            if payload.get("done"):
+                break
+
 
 class EchoClient:
     """Test double. Returns a fixed, citation-bearing answer without a server."""
@@ -93,3 +135,8 @@ class EchoClient:
     def chat(self, system, user):
         self.calls.append({"system": system, "user": user})
         return self.reply
+
+    def stream_chat(self, system, user):
+        self.calls.append({"system": system, "user": user})
+        for word in self.reply.split(" "):
+            yield word + " "

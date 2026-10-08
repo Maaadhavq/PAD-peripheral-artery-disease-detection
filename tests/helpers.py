@@ -10,7 +10,7 @@ class StubRetriever:
 
     def __init__(self, chunks=None):
         self.chunks = chunks if chunks is not None else [{
-            "source_id": "model_card", "source_title": "Model card", "section": "Limits",
+            "id": "model_card::Limits::0", "source_id": "model_card", "source_title": "Model card", "section": "Limits",
             "text": "This is a research model and not a diagnostic device.",
             "url": "knowledge/model_card.md", "publisher": "This project", "score": 0.8,
         }]

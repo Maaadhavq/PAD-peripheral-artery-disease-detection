@@ -21,7 +21,14 @@ from pad.train import load_artifacts
 from copilot.embeddings import EmbeddingUnavailable
 from copilot.llm import OllamaClient, OllamaUnavailable
 from copilot.prompts import INSUFFICIENT_EVIDENCE, SYSTEM_PROMPT, build_user_prompt
-from copilot.retrieve import Retriever, build_query, citation_list, format_chunks
+from copilot.rerank import rerank
+from copilot.retrieve import (
+    Retriever,
+    build_query,
+    citation_list,
+    format_chunks,
+    retrieve_for,
+)
 
 CITATION_RE = re.compile(r"\[(\d+)\]")
 
@@ -38,6 +45,44 @@ class Answer:
     passages: list = field(default_factory=list)
     grounded: bool = True
     warnings: list = field(default_factory=list)
+
+
+class StreamedExplanation:
+    """A streaming explanation and its verified result.
+
+    Iterating yields display text. Once exhausted, ``answer`` holds the
+    citation-checked version, which is what should finally be shown.
+    """
+
+    def __init__(self, tokens, failure, copilot, risk, factors, passages):
+        self._tokens = tokens
+        self._copilot = copilot
+        self._risk = risk
+        self._factors = factors
+        self._passages = passages
+        self.answer = failure
+        self.raw = "" if failure is None else failure.text
+
+    def __iter__(self):
+        if self._tokens is None:
+            # A failure before generation: show the message, nothing to stream.
+            yield self.raw
+            return
+
+        pieces = []
+        for piece in self._tokens:
+            pieces.append(piece)
+            yield piece
+
+        self.raw = "".join(pieces)
+        self.answer = self._copilot.finish(
+            self.raw, self._risk, self._factors, self._passages
+        )
+
+    @property
+    def changed_by_verification(self):
+        """True when citation checking altered what was streamed."""
+        return self.answer is not None and self.answer.text.strip() != self.raw.strip()
 
 
 def check_citations(text, n_passages):
@@ -68,14 +113,33 @@ def check_citations(text, n_passages):
     return cleaned.strip(), warnings
 
 
+BINARY_FEATURES = {
+    "gender", "has_diabetes", "has_hypertension", "has_heart_disease",
+    "has_stroke_history", "is_on_statin", "is_on_antiplatelet",
+}
+
+
+def format_value(column, value):
+    """Render one feature value unambiguously for the prompt.
+
+    Binary flags used to be shown as 0.0 and 1.0, which the model read as
+    quantities: given "is_on_statin: 0.0" it wrote that the patient was on a
+    statin "which was 0.0". Words remove the ambiguity.
+    """
+    if value is None or value != value:
+        return "not measured"
+    if column == "gender":
+        return "male" if value else "female"
+    if column in BINARY_FEATURES:
+        return "yes" if value else "no"
+    return f"{value:g}"
+
+
 def features_to_text(features, columns):
     """Readable dump of every feature value, for the prompt."""
     row = to_frame(features, columns).iloc[0]
-    lines = []
-    for column in columns:
-        value = row[column]
-        lines.append(f"- {column}: {'missing' if value is None or value != value else value}")
-    return "\n".join(lines)
+    return "\n".join(f"- {column}: {format_value(column, row[column])}"
+                     for column in columns)
 
 
 class PadCopilot:
@@ -119,6 +183,103 @@ class PadCopilot:
             "model_name": self.model_name,
         }
 
+    def prepare(self, features, question=None, k=6, background=None, top_k_factors=5,
+                use_rerank=False):
+        """Everything up to the generation step: score, factors, passages.
+
+        Shared by explain() and stream_explain() so the two cannot drift apart.
+        Returns (risk, factors, passages, failure) where failure is a ready-made
+        Answer when a backend is down or nothing relevant was retrieved.
+        """
+        risk = predict_risk(self.bundle, features)
+        if background is None:
+            background = self.bundle.get("background")
+        factors = top_factors(self.bundle, features, k=top_k_factors, background=background)
+
+        try:
+            # Reranking measurably helps (hit@1 0.79 -> 0.92 on the golden set)
+            # but costs one generation per candidate, so the caller opts in.
+            if use_rerank:
+                candidates = retrieve_for(self.retriever, factors, question, k=k * 3)
+                query = question or build_query(factors)
+                passages = rerank(query, candidates, self.llm, k=k)
+            else:
+                passages = retrieve_for(self.retriever, factors, question, k=k)
+        except EmbeddingUnavailable as error:
+            return risk, factors, [], Answer(
+                risk=risk, model_name=self.model_name, factors=factors,
+                text=str(error), grounded=False,
+                warnings=["The embedding backend was unreachable; no passages retrieved."],
+            )
+
+        if not passages:
+            # Nothing cleared the relevance threshold, so there is nothing to
+            # ground an answer in. Say so instead of letting the model improvise.
+            return risk, factors, [], Answer(
+                risk=risk, model_name=self.model_name, factors=factors,
+                text=INSUFFICIENT_EVIDENCE, grounded=False,
+                warnings=["No passage scored above the relevance threshold."],
+            )
+
+        return risk, factors, passages, None
+
+    def build_prompt(self, features, risk, factors, passages, question=None):
+        """The user turn handed to the model."""
+        return build_user_prompt(
+            risk=risk,
+            model_name=self.model_name,
+            factors_text=factors_to_text(factors),
+            features_text=features_to_text(features, self.bundle["features"]),
+            passages=format_chunks(passages),
+            task=question,
+        )
+
+    def finish(self, raw, risk, factors, passages):
+        """Verify citations on a finished answer and package the result."""
+        text, warnings = check_citations(raw, len(passages))
+        if not CITATION_RE.search(text):
+            warnings.append("The answer cites no passages, so it may not be grounded.")
+
+        return Answer(
+            risk=risk,
+            model_name=self.model_name,
+            factors=factors,
+            text=text,
+            citations=citation_list(passages),
+            passages=passages,
+            grounded=bool(CITATION_RE.search(text)),
+            warnings=warnings,
+        )
+
+    def stream_explain(self, features, question=None, k=6, background=None,
+                       top_k_factors=5, use_rerank=False):
+        """Stream the explanation, then verify it.
+
+        Returns a StreamedExplanation: iterate it for display, then read
+        ``.answer`` for the verified version. Citation checking cannot run until
+        the text is complete, so what streams is unverified and the caller is
+        expected to re-render ``.answer`` afterwards.
+        """
+        risk, factors, passages, failure = self.prepare(
+            features, question, k, background, top_k_factors, use_rerank
+        )
+        if failure is not None:
+            return StreamedExplanation(None, failure, self, risk, factors, passages)
+
+        prompt = self.build_prompt(features, risk, factors, passages, question)
+        try:
+            tokens = self.llm.stream_chat(SYSTEM_PROMPT, prompt)
+        except OllamaUnavailable as error:
+            return StreamedExplanation(
+                None,
+                Answer(risk=risk, model_name=self.model_name, factors=factors,
+                       text=str(error), citations=citation_list(passages),
+                       passages=passages, grounded=False,
+                       warnings=["The local LLM was unreachable; no explanation generated."]),
+                self, risk, factors, passages,
+            )
+        return StreamedExplanation(tokens, None, self, risk, factors, passages)
+
     def explain(self, features, question=None, k=6, background=None, top_k_factors=5):
         """Score, explain and ground - the whole pipeline for one patient."""
         risk = predict_risk(self.bundle, features)
@@ -126,9 +287,8 @@ class PadCopilot:
             background = self.bundle.get("background")
         factors = top_factors(self.bundle, features, k=top_k_factors, background=background)
 
-        query = build_query(factors, question)
         try:
-            passages = self.retriever.retrieve(query, k=k)
+            passages = retrieve_for(self.retriever, factors, question, k=k)
         except EmbeddingUnavailable as error:
             # Retrieval uses the same Ollama server as generation and fails the
             # same way, so it degrades the same way: keep the score, drop the

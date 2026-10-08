@@ -22,3 +22,11 @@
 {"question": "Which drugs count as antiplatelet therapy in the model?", "expect_sources": ["feature_dictionary"], "note": "aspirin, clopidogrel, ticagrelor"}
 {"question": "Why are comorbidities taken only from earlier admissions?", "expect_sources": ["feature_dictionary", "model_card"], "note": "ICD codes assigned at discharge"}
 {"question": "What does the platelet count feature represent clinically?", "expect_sources": ["feature_dictionary"], "note": "thrombus formation on plaque"}
+{"question": "What is the tallest mountain in South America?", "expect_sources": [], "note": "out of scope - geography"}
+{"question": "How do I center a div in CSS?", "expect_sources": [], "note": "out of scope - programming"}
+{"question": "What should I cook for dinner tonight?", "expect_sources": [], "note": "out of scope - everyday"}
+{"question": "Who directed the film Jaws?", "expect_sources": [], "note": "out of scope - trivia"}
+{"question": "How do I train for a marathon?", "expect_sources": [], "note": "out of scope - adjacent health but not PAD"}
+{"question": "What is the exchange rate between euros and yen?", "expect_sources": [], "note": "out of scope - finance"}
+{"question": "Explain how a transformer neural network works", "expect_sources": [], "note": "out of scope - ML but not this model"}
+{"question": "What are the symptoms of appendicitis?", "expect_sources": [], "note": "out of scope - medical but not PAD"}

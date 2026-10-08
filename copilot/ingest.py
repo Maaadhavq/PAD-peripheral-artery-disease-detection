@@ -12,6 +12,7 @@ from copilot.chunking import chunk_document
 from copilot.embeddings import get_embedder
 from copilot.fetch import fetch_source, load_sources, local_documents
 from copilot.store import DEFAULT_INDEX_DIR, VectorStore
+from copilot.threshold import calibrate_threshold, describe
 
 
 def collect_documents(refresh=False, verbose=True):
@@ -61,6 +62,13 @@ def build_index(provider="ollama", refresh=False, index_dir=DEFAULT_INDEX_DIR):
     vectors = embedder.embed([chunk["text"] for chunk in chunks])
 
     store = VectorStore(vectors, chunks, embedder_name=embedder.name)
+
+    # Measure where on-topic and off-topic questions actually land for this
+    # embedder, so the copilot knows when it has nothing worth answering from.
+    print("Calibrating the relevance threshold...")
+    store.calibration = calibrate_threshold(store, embedder)
+    print(f"  {describe(store.calibration)}")
+
     path = store.save(index_dir)
     print(f"Saved index ({len(store)} chunks, dim {vectors.shape[1]}) to {path}")
     return store

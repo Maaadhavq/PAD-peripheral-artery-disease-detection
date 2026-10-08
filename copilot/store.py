@@ -19,7 +19,7 @@ CHUNK_FILE = "chunks.json"
 class VectorStore:
     """Cosine-similarity search over embedded chunks."""
 
-    def __init__(self, vectors, chunks, embedder_name=""):
+    def __init__(self, vectors, chunks, embedder_name="", calibration=None):
         if len(vectors) != len(chunks):
             raise ValueError(
                 f"{len(vectors)} vectors but {len(chunks)} chunks - index is corrupt."
@@ -27,6 +27,14 @@ class VectorStore:
         self.vectors = np.asarray(vectors, dtype=np.float32)
         self.chunks = chunks
         self.embedder_name = embedder_name
+        # Cosine scales differently per embedding model, so the relevance
+        # cutoff belongs with the index that was built with it, not in code.
+        self.calibration = calibration or {}
+
+    @property
+    def min_score(self):
+        """Calibrated relevance cutoff, or 0.0 when the index predates one."""
+        return float(self.calibration.get("min_score", 0.0))
 
     def __len__(self):
         return len(self.chunks)
@@ -55,7 +63,11 @@ class VectorStore:
         index_dir.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(index_dir / VECTOR_FILE, vectors=self.vectors)
         (index_dir / CHUNK_FILE).write_text(
-            json.dumps({"embedder": self.embedder_name, "chunks": self.chunks}, indent=1),
+            json.dumps({
+                "embedder": self.embedder_name,
+                "calibration": self.calibration,
+                "chunks": self.chunks,
+            }, indent=1),
             encoding="utf-8",
         )
         return index_dir
@@ -71,4 +83,9 @@ class VectorStore:
             )
         vectors = np.load(vector_path)["vectors"]
         payload = json.loads(chunk_path.read_text(encoding="utf-8"))
-        return cls(vectors, payload["chunks"], payload.get("embedder", ""))
+        return cls(
+            vectors,
+            payload["chunks"],
+            payload.get("embedder", ""),
+            payload.get("calibration"),
+        )

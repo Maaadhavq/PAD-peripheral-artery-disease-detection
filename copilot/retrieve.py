@@ -5,9 +5,11 @@ from functools import lru_cache
 from copilot.embeddings import get_embedder
 from copilot.store import DEFAULT_INDEX_DIR, VectorStore
 
-# Below this cosine similarity a chunk is treated as unrelated to the question.
-# The copilot refuses to answer rather than citing something irrelevant.
-MIN_SCORE = 0.25
+# The relevance cutoff is measured per embedding model at ingest and stored in
+# the index (see copilot/threshold.py). It is not a constant here: a fixed 0.25
+# refused nothing at all with nomic-embed-text, which scores even an unrelated
+# question around 0.42, so the refusal path was dead code.
+FALLBACK_MIN_SCORE = 0.0
 
 
 @lru_cache(maxsize=4)
@@ -25,12 +27,18 @@ class Retriever:
         self.provider = provider or self.store.embedder_name or "ollama"
         self.embedder = get_embedder(self.provider)
 
-    def retrieve(self, query, k=6, min_score=MIN_SCORE):
+    @property
+    def min_score(self):
+        """Cutoff calibrated for whichever embedder built this index."""
+        return self.store.min_score or FALLBACK_MIN_SCORE
+
+    def retrieve(self, query, k=6, min_score=None):
         """The chunks most similar to the query, best first."""
         if not query or not query.strip():
             return []
+        threshold = self.min_score if min_score is None else min_score
         query_vector = self.embedder.embed([query])[0]
-        return self.store.search(query_vector, k=k, min_score=min_score)
+        return self.store.search(query_vector, k=k, min_score=threshold)
 
 
 def build_query(factors, question=None):
@@ -44,6 +52,33 @@ def build_query(factors, question=None):
     if question:
         parts.append(question)
     return " ".join(parts)
+
+
+def retrieve_for(retriever, factors, question=None, k=6):
+    """Retrieve for the factors and, separately, for the user's question.
+
+    A single concatenated query buries a specific question under five factor
+    labels plus the words "peripheral artery disease", so asking about the model
+    returned general clinical pages. Running both and merging by score lets a
+    pointed question pull in its own evidence while the factor context is still
+    represented.
+    """
+    factor_hits = retriever.retrieve(build_query(factors), k=k)
+    if not question:
+        return factor_hits[:k]
+
+    question_hits = retriever.retrieve(question, k=k)
+
+    merged = {}
+    for chunk in list(question_hits) + list(factor_hits):
+        key = chunk.get("id") or (
+            chunk.get("source_id"), chunk.get("section"), chunk.get("text", "")[:80]
+        )
+        existing = merged.get(key)
+        if existing is None or chunk["score"] > existing["score"]:
+            merged[key] = chunk
+
+    return sorted(merged.values(), key=lambda c: c["score"], reverse=True)[:k]
 
 
 def format_chunks(chunks):
